@@ -85,7 +85,7 @@ state_dict = checkpoint["model_state_dict"]
 new_state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
 
 s3d.load_state_dict(new_state_dict, strict=False)  # Use strict=False if you're not using the classifier
-s3d.replace_logits(num_classes)
+# s3d.replace_logits(num_classes)
 
 s3d.cuda()
 # comment for fine-tuning
