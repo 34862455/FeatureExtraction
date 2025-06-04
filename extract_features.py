@@ -19,6 +19,7 @@ import gzip
 import tqdm
 
 from model_s3d import S3D
+from s3d_ctc_finetune import S3DRecognizer, build_vocab
 from PIL import Image, ImageDraw
 
 SEED = 42
@@ -75,8 +76,14 @@ for name, param in weight_dict.items():
 
 
 # Load S3D finetuned to PHOENIX14T recognition task
+# Load vocab for classifier size
+vocab_file = '/home/minneke/Documents/Dataset/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T/annotations/manual/PHOENIX-2014-T.train.corpus.csv'
+vocab, idx2gloss = build_vocab(vocab_file)
 
-checkpoint = torch.load("checkpoints/finetuning/s3d_classifier_ft_epoch09.pt")
+# Build and load full model
+s3d = S3D(num_class=400)
+model = S3DRecognizer(s3d, num_classes=len(vocab))
+checkpoint = torch.load("checkpoints/finetuning/epoch07.pt")
 
 # extract only the model's state_dict
 state_dict = checkpoint["model_state_dict"]
@@ -86,7 +93,7 @@ new_state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
 
 s3d.load_state_dict(new_state_dict, strict=False)  # Use strict=False if you're not using the classifier
 # s3d.replace_logits(num_classes)
-
+model.to(device).eval()
 s3d.cuda()
 # comment for fine-tuning
 for _, p in s3d.named_parameters():
@@ -179,10 +186,48 @@ def make_dataset_SASL(feature_root, annotation_file):
     
     return dataset
 
+# def pickle_features(feature_root, dataset, mode):
+#     data = []
+#     count = 0
+#     for files, name, signer, gloss, text in tqdm.tqdm(dataset):
+#         count += 1
+#         frames = []
+#         for frame in files:
+#             try:
+#                 img = read_image(os.path.join(feature_root, name, frame)).float() / 255.0
+#                 img = t.functional.resize(img, [200, 200])
+#                 img = img * 2 - 1
+#                 frames.append(img)
+#             except:
+#                 print("Missing frame:", frame)
+#         if len(frames) < 2:
+#             continue
+#
+#         frames = torch.stack(frames, dim=0).unsqueeze(0)  # (1, T, C, H, W)
+#         frames = frames.permute(0, 2, 1, 3, 4).to(device)  # (B, C, T, H, W)
+#
+#         with torch.no_grad():
+#             logits = model(frames)  # (T, B, C)
+#             features = logits.permute(1, 0, 2).squeeze(0)  # (T, C)
+#             features = features[:, :-1]  # optional: drop CTC blank token
+#
+#         data.append({
+#             "name": name,
+#             "signer": signer,
+#             "gloss": gloss,
+#             "text": text,
+#             "sign": features.cpu()
+#         })
+#
+#     out_path = f'data/DSG_classifier_logits_{mode}.pt'
+#     with gzip.open(out_path, "wb") as f:
+#         pickle.dump(data, f)
+#     print(f"Saved {len(data)} samples to {out_path}")
+
 def pickle_features(feature_root, dataset,mode):
     data = []
-    count = 0    
-    for files,name,signer,gloss,text in dataset:  
+    count = 0
+    for files,name,signer,gloss,text in dataset:
         count+=1
         frames = []
         print(len(files), count)
@@ -204,9 +249,9 @@ def pickle_features(feature_root, dataset,mode):
         # for i in range(8-(len(frames)%8)):
         #     frames.append(torch.zeros(1,3,260,210))
         # frames = np.asarray(frames, dtype=np.float32)
-        
+
         frames = torch.stack(frames,dim=0).float().to(device)
-        
+
         #frames = frames.unfold(0,16,8)
         frames = frames.unsqueeze(0).permute(0,2,1,3,4)
         features = s3d(frames)
@@ -218,10 +263,9 @@ def pickle_features(feature_root, dataset,mode):
             "text": text,
             "sign": features.squeeze(0)
         })
-        
-        
-    with gzip.open('data/DSG_classifier09_{}.pt'.format(mode), "wb") as f:
-        pickle.dump(data, f)  
+
+    with gzip.open('data/DSG_open07_{}.pt'.format(mode), "wb") as f:
+        pickle.dump(data, f)
 
 def pickle_features_mask(feature_root, dataset,mode):
     data = []
