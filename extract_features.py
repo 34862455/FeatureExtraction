@@ -185,7 +185,7 @@ def make_dataset_SASL(feature_root, annotation_file):
             
     
     return dataset
-
+# Use this definition if adding a classifier to the S3D model
 # def pickle_features(feature_root, dataset, mode):
 #     data = []
 #     count = 0
