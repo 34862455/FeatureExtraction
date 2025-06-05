@@ -9,9 +9,13 @@ Project Structure
 
 .
 ├── s3d_ctc_finetune.py       # Fine-tunes S3D on PHOENIX14T glosses using CTC loss
+
 ├── extract_features.py       # Extracts features using a fine-tuned checkpoint
+
 ├── model_s3d.py              # Defines the S3D architecture
+
 ├── data/                     # Output directory for extracted features (.pt files)
+
 ├── checkpoints/              # Directory for saving/loading model checkpoints
 
 -------------------------------------------------------
