@@ -11,6 +11,15 @@ import pandas as pd
 from jiwer import wer
 from model_s3d import S3D
 
+# Update:
+#   CHECKPOINT_DIR
+#   train_root
+#   dev_root
+#   train_csv
+#   dev_csv
+#   output path (at bottom)
+
+
 CHECKPOINT_DIR = '/home/minneke/Documents/Projects/SignExperiments.old/checkpoints/finetuning'
 # RESUME_PATH = '/home/minneke/Documents/Projects/SignExperiments.old/checkpoints/finetuning/last.pt'
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
@@ -116,17 +125,8 @@ if __name__ == "__main__":
 
     # ------------------------ Load Model ------------------------
 
-    # # Freeze all by default
-    # for param in s3d.parameters():
-    #     param.requires_grad = False
-    #
-    # # Unfreeze high-level layers
-    # for name, param in s3d.named_parameters():
-    #     if name.startswith("base.14") or name.startswith("base.15"):  # Mixed_5b and Mixed_5c
-    #         param.requires_grad = True
 
-
-    # # ---------------------------------------------last two layers unfrozen-------------------
+    # # ---------------------------------------------last two blocks unfrozen-------------------
     # for name, param in s3d.named_parameters():
     #     if not (name.startswith("base.14") or name.startswith("base.15")):
     #         param.requires_grad = False
