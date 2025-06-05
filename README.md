@@ -69,12 +69,16 @@ To use the extracted features in SignJoey:
 1. Update the data paths in your config:
 
     data_path: /your/path/to/project/data
+   
     train: DSG_train.pt
+   
     dev: DSG_dev.pt
+   
     test: DSG_test.pt
+   
     feature_size: 1024
 
-2. Run training:
+3. Run training:
 
     python train.py --config configs/SLR.yaml
 
