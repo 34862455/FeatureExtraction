@@ -25,8 +25,8 @@ from PIL import Image, ImageDraw
 # ------------------------ Config ------------------------
 EXTRACTOR = "s3d" # Options: "s3d", "mediapipe"
 DATASET = "phoenix"  # Options: "phoenix", "sasl", "how2sign"
-CHECKPOINT_PATH = "checkpoints/finetuning/s3d_branch3_epoch25.pt"  # Only for S3D
-OUTPUT_NAME = "branch3"  # Prefix for saved feature files
+CHECKPOINT_PATH = "checkpoints/finetuning/s3d_partial_epoch25.pt"  # Only for S3D
+OUTPUT_NAME = "partial25"  # Prefix for saved feature files
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SPLITS = ["train", "dev", "test"]

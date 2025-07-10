@@ -243,7 +243,7 @@ from model_s3d import S3D
 # ------------------------ Config ------------------------
 CHECKPOINT_DIR = "/home/minneke/Documents/Projects/FeatureExtraction/checkpoints/finetuning"
 # Set to checkpoint path to resume or None otherwise
-RESUME_PATH = "/home/minneke/Documents/Projects/FeatureExtraction/checkpoints/finetuning/s3d_partial_epoch24.pt.pt"
+RESUME_PATH = "/home/minneke/Documents/Projects/FeatureExtraction/checkpoints/finetuning/s3d_partial_epoch24.pt"
 S3D_STRATEGY = "partial"  # Options: "partial", "classifier", "branch3"
 CHECKPOINT_PREFIX = f"s3d_{S3D_STRATEGY}"
 
@@ -376,19 +376,19 @@ if __name__ == "__main__":
     scaler = torch.amp.GradScaler()
 
     start_epoch = 1
-    if RESUME_PATH and os.path.exists(RESUME_PATH):
+    if RESUME_PATH:
         checkpoint = torch.load(RESUME_PATH, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
         print(f"Resumed from epoch {start_epoch}")
 
-        print(f"Checkpoint epoch: {checkpoint['epoch']}")
-        print("Checkpoint keys:", checkpoint['model_state_dict'].keys())
-        print("Current model keys:", model.state_dict().keys())
-
-        print("Checkpoint optimizer param groups:", checkpoint['optimizer_state_dict']['param_groups'])
-        print("Current optimizer param groups:", optimizer.state_dict()['param_groups'])
+        # print(f"Checkpoint epoch: {checkpoint['epoch']}")
+        # print("Checkpoint keys:", checkpoint['model_state_dict'].keys())
+        # print("Current model keys:", model.state_dict().keys())
+        #
+        # print("Checkpoint optimizer param groups:", checkpoint['optimizer_state_dict']['param_groups'])
+        # print("Current optimizer param groups:", optimizer.state_dict()['param_groups'])
 
     train_set = PhoenixS3DDataset(train_root, train_csv, vocab)
     val_set = PhoenixS3DDataset(dev_root, dev_csv, vocab)
