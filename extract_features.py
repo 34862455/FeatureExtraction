@@ -16,17 +16,17 @@ import random
 import os
 import pickle
 import gzip
-import tqdm
+from tqdm import tqdm
 
 from model_s3d import S3D
 from s3d_ctc_finetune import S3DRecognizer, build_vocab
 from PIL import Image, ImageDraw
 
 # ------------------------ Config ------------------------
-EXTRACTOR = "s3d" # Options: "s3d", "mediapipe"
+EXTRACTOR = "i3d" # Options: "s3d", "mediapipe", "i3d"
 DATASET = "phoenix"  # Options: "phoenix", "sasl", "how2sign"
-CHECKPOINT_PATH = "checkpoints/finetuning/s3d_partial_epoch25.pt"  # Only for S3D
-OUTPUT_NAME = "partial25"  # Prefix for saved feature files
+CHECKPOINT_PATH = "model_i3d/model_rgb.pth"  # Only for S3D
+OUTPUT_NAME = "i3d"  # Prefix for saved feature files
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SPLITS = ["train", "dev", "test"]
@@ -137,6 +137,17 @@ def load_s3d_model(checkpoint_path):
         p.requires_grad = False
     return s3d
 
+def load_i3d_model(weights_path, device):
+    from src_i3d.i3dpt import I3D
+    if weights_path is None:
+        raise ValueError("CHECKPOINT_PATH must be set for I3D extractor.")
+    model = I3D(num_classes=400)  # Pretrained on Kinetics-400
+    model.load_state_dict(torch.load(weights_path, map_location=device))
+    model.to("cuda").eval()
+    for param in model.parameters():
+        param.requires_grad = False
+    return model
+
 def get_dataset_paths(dataset, split):
     base_path = "/home/minneke/Documents/Dataset"
 
@@ -233,6 +244,47 @@ def pickle_features_s3d(feature_root, dataset, output_name, split, model, device
         pickle.dump(data, f)
     print(f"Saved {len(data)} samples to {out_path}")
 
+def pickle_features_i3d(feature_root, dataset, output_name, split, model, device):
+    data = []
+    preprocess_frame = t.Compose([
+        t.Resize((224, 224)),
+        t.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    ])
+
+    for entry in tqdm(dataset, desc=f"Extracting {split} with I3D"):
+        files, name, signer, gloss, text = entry
+        frames = []
+        for frame_file in files:
+            frame_path = os.path.join(feature_root, name, frame_file)
+            try:
+                img = read_image(frame_path).float() / 255.0
+                img = preprocess_frame(img)
+                frames.append(img)
+            except Exception as e:
+                print(f"Error reading frame {frame_path}: {e}")
+        if len(frames) < 2:
+            continue
+
+        frames = torch.stack(frames, dim=0).permute(1, 0, 2, 3).unsqueeze(0).to(device)  # (1, C, T, H, W)
+
+        with torch.no_grad():
+            raw_features = model.extract_features(frames).squeeze(0)  # (C, T, H, W)
+            features = torch.mean(raw_features, dim=[2, 3])  # (C, T)
+            features = features.permute(1, 0)  # (T, C)
+
+        data.append({
+            "name": name,
+            "signer": signer,
+            "gloss": gloss,
+            "text": text,
+            "sign": features.cpu()
+        })
+
+    out_path = f"data/DSG_{output_name}_{split}.pt"
+    with gzip.open(out_path, "wb") as f:
+        pickle.dump(data, f)
+    print(f"Saved {len(data)} samples to {out_path}")
+
 def pickle_features_keypoints(feature_root, dataset, output_name, split):
     import gzip, pickle, torch
     from tqdm import tqdm
@@ -291,6 +343,8 @@ def main():
         model = load_s3d_model(CHECKPOINT_PATH)
     elif EXTRACTOR == "mediapipe":
         model = None  # Not needed
+    elif EXTRACTOR == "i3d":
+        model = load_i3d_model(CHECKPOINT_PATH, device)
     else:
         raise ValueError(f"Unsupported extractor: {EXTRACTOR}")
 
@@ -302,6 +356,8 @@ def main():
             pickle_features_s3d(feature_root, dataset, OUTPUT_NAME, split, model, device)
         elif EXTRACTOR == "mediapipe":
             pickle_features_keypoints(feature_root, dataset, OUTPUT_NAME, split)
+        elif EXTRACTOR == "i3d":
+            pickle_features_i3d(feature_root, dataset, OUTPUT_NAME, split, model, device)
 
 
 if __name__ == "__main__":

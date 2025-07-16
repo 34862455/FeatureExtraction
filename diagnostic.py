@@ -1,8 +1,8 @@
 import torch
 
 # Replace with your actual paths
-ckpt_a = torch.load("checkpoints/finetuning/epoch07.pt", map_location='cpu')
-ckpt_b = torch.load("checkpoints/finetuning/s3d_classifier_ft_epoch09.pt", map_location='cpu')
+ckpt_a = torch.load("checkpoints/finetuning_s3d/epoch07.pt", map_location='cpu')
+ckpt_b = torch.load("checkpoints/finetuning_s3d/s3d_classifier_ft_epoch09.pt", map_location='cpu')
 
 state_a = ckpt_a["model_state_dict"]
 state_b = ckpt_b["model_state_dict"]

@@ -1,3 +1,5 @@
-checkpoints/
 data/
 clean-backup/
+checkpoints/*
+checkpoints/*
+!checkpoints/*.pt

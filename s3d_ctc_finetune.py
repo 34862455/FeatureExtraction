@@ -241,9 +241,9 @@ from jiwer import wer
 from model_s3d import S3D
 
 # ------------------------ Config ------------------------
-CHECKPOINT_DIR = "/home/minneke/Documents/Projects/FeatureExtraction/checkpoints/finetuning"
+CHECKPOINT_DIR = "/checkpoints/finetuning_s3d"
 # Set to checkpoint path to resume or None otherwise
-RESUME_PATH = "/home/minneke/Documents/Projects/FeatureExtraction/checkpoints/finetuning/s3d_partial_epoch24.pt"
+RESUME_PATH = None
 S3D_STRATEGY = "partial"  # Options: "partial", "classifier", "branch3"
 CHECKPOINT_PREFIX = f"s3d_{S3D_STRATEGY}"
 
