@@ -3,3 +3,5 @@ clean-backup/
 checkpoints/*
 checkpoints/*
 !checkpoints/*.pt
+__pycache__/
+.idea/

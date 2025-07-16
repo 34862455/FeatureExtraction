@@ -25,8 +25,8 @@ from PIL import Image, ImageDraw
 # ------------------------ Config ------------------------
 EXTRACTOR = "i3d" # Options: "s3d", "mediapipe", "i3d"
 DATASET = "phoenix"  # Options: "phoenix", "sasl", "how2sign"
-CHECKPOINT_PATH = "model_i3d/model_rgb.pth"  # Only for S3D
-OUTPUT_NAME = "i3d"  # Prefix for saved feature files
+CHECKPOINT_PATH =  "checkpoints/finetuning_i3d/i3d_partial_epoch11.pt" # Only for S3D & I3D "model_i3d/model_rgb.pth"
+OUTPUT_NAME = "i3d_partial11"  # Prefix for saved feature files
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SPLITS = ["train", "dev", "test"]
@@ -142,7 +142,11 @@ def load_i3d_model(weights_path, device):
     if weights_path is None:
         raise ValueError("CHECKPOINT_PATH must be set for I3D extractor.")
     model = I3D(num_classes=400)  # Pretrained on Kinetics-400
-    model.load_state_dict(torch.load(weights_path, map_location=device))
+    checkpoint = torch.load(weights_path, map_location=device)
+    # Load fine-tuned weights and strip the 'i3d.' prefix
+    state_dict = checkpoint['model_state_dict']
+    new_state_dict = {k.replace('i3d.', ''): v for k, v in state_dict.items() if k.startswith('i3d.')}
+    model.load_state_dict(new_state_dict, strict=False)
     model.to("cuda").eval()
     for param in model.parameters():
         param.requires_grad = False
@@ -192,7 +196,7 @@ def pickle_features_s3d(feature_root, dataset, output_name, split, model, device
     is_video_dataset = isinstance(dataset[0], tuple) and len(dataset[0]) == 4
     is_frame_dataset = isinstance(dataset[0], tuple) and len(dataset[0]) == 5
 
-    for entry in tqdm.tqdm(dataset, desc=f"Extracting {split}"):
+    for entry in tqdm(dataset, desc=f"Extracting {split}"):
         if is_frame_dataset:
             files, name, signer, gloss, text = entry
             frames = []
@@ -268,7 +272,8 @@ def pickle_features_i3d(feature_root, dataset, output_name, split, model, device
         frames = torch.stack(frames, dim=0).permute(1, 0, 2, 3).unsqueeze(0).to(device)  # (1, C, T, H, W)
 
         with torch.no_grad():
-            raw_features = model.extract_features(frames).squeeze(0)  # (C, T, H, W)
+            features, _ = model.extract_features(frames)  # Ignore temporal length
+            raw_features = features.squeeze(0)  # (C, T, H, W)
             features = torch.mean(raw_features, dim=[2, 3])  # (C, T)
             features = features.permute(1, 0)  # (T, C)
 
