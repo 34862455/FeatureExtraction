@@ -12,6 +12,8 @@ from jiwer import wer
 from src_i3d.i3dpt import I3D
 
 # ------------------------ Config ------------------------
+DATA_PATH = "/home/minneke/Documents/Dataset"
+PHOENIX_PATH = "/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T"
 CHECKPOINT_DIR = "checkpoints/finetuning_i3d"
 RESUME_PATH = None
 I3D_STRATEGY = "partial"  # Options: "partial", "full"
@@ -122,10 +124,10 @@ if __name__ == "__main__":
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
     # Data paths
-    train_root = "/home/minneke/Documents/Dataset/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T/features/fullFrame-210x260px/train"
-    dev_root = "/home/minneke/Documents/Dataset/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T/features/fullFrame-210x260px/dev"
-    train_csv = "/home/minneke/Documents/Dataset/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T/annotations/manual/PHOENIX-2014-T.train.corpus.csv"
-    dev_csv = "/home/minneke/Documents/Dataset/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T/annotations/manual/PHOENIX-2014-T.dev.corpus.csv"
+    train_root = f"{DATA_PATH}/{PHOENIX_PATH}/features/fullFrame-210x260px/train"
+    dev_root = f"{DATA_PATH}/{PHOENIX_PATH}/features/fullFrame-210x260px/dev"
+    train_csv = f"{DATA_PATH}/{PHOENIX_PATH}/annotations/manual/PHOENIX-2014-T.train.corpus.csv"
+    dev_csv = f"{DATA_PATH}/{PHOENIX_PATH}/annotations/manual/PHOENIX-2014-T.dev.corpus.csv"
 
     vocab, idx2gloss = build_vocab(train_csv)
 

@@ -21,19 +21,19 @@ class S3D(nn.Module):
             Mixed_4f(),
             nn.MaxPool3d(kernel_size=(2,2,2), stride=(2,2,2), padding=(0,0,0)),
             Mixed_5b(),
-            Mixed_5c(),
+            Mixed_5c(), #feature dimension output of 1024
         )
+        # defines final classification head
         self.fc = nn.Sequential(nn.Conv3d(1024, num_class, kernel_size=1, stride=1, bias=True),)
 
     def forward(self, x):
-        y = self.base(x)
-        y = F.avg_pool3d(y, (2, y.size(3), y.size(4)), stride=1)
-        # y = self.fc(y)
-        # y = y.view(y.size(0), y.size(1), y.size(2))
-        # logits = torch.mean(y, 2)
-
-        # return logits
-        return y.transpose(2,1).squeeze(3).squeeze(3)
+        y = self.base(x) #Features of shape [B, C, T, H, W] -> x = [4, 3, T, 200, 200] y = [4, 1024, T/8, 6, 6]
+        # saves spatial patterns with 1025 channels, saves most of temporal structure for evolution, saves summary statistic of feature map
+        y = F.avg_pool3d(y, (2, y.size(3), y.size(4)), stride=1) # y = [B, 1024, T/8 - 1, 1, 1]
+        # for F.avg_pool3d: T_out = T_in - kernel_size + 1
+                                # = T / 8 - 2 + 1
+                                # = T / 8 - 1
+        return y.transpose(2,1).squeeze(3).squeeze(3) # y = [B, T/8 - 1, 1024] transpose necessary to be like seq_len in NLP models (standard)
 
     def extract_features(self,x):
         extractor = self.base[:-3]
@@ -43,7 +43,8 @@ class S3D(nn.Module):
         return y.squeeze(3).squeeze(3).transpose(2,1)
         
 
-    
+    # defensive programming. Redundant in our case but just a safety measure.
+    # Ensures that there are no issues f you wanted to repurpose self.fc from the loaded model
     def replace_logits(self, num_class):
         if num_class is None:
             self.fc = nn.Identity()

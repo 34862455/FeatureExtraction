@@ -23,10 +23,10 @@ from s3d_ctc_finetune import S3DRecognizer, build_vocab
 from PIL import Image, ImageDraw
 
 # ------------------------ Config ------------------------
-EXTRACTOR = "i3d" # Options: "s3d", "mediapipe", "i3d"
+EXTRACTOR = "s3d" # Options: "s3d", "mediapipe", "i3d"
 DATASET = "phoenix"  # Options: "phoenix", "sasl", "how2sign"
-CHECKPOINT_PATH =  "checkpoints/finetuning_i3d/i3d_partial_epoch11.pt" # Only for S3D & I3D "model_i3d/model_rgb.pth"
-OUTPUT_NAME = "i3d_partial11"  # Prefix for saved feature files
+CHECKPOINT_PATH =  "checkpoints/S3D_kinetics400(1).pt" # Only for S3D & I3D "model_i3d/model_rgb.pth"
+OUTPUT_NAME = "DSG_s3d_kinetics"  # Prefix for saved feature files
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 SPLITS = ["train", "dev", "test"]
@@ -116,13 +116,23 @@ def load_s3d_model(checkpoint_path):
     vocab_file = "/home/minneke/Documents/Dataset/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T/annotations/manual/PHOENIX-2014-T.train.corpus.csv"
     vocab, _ = build_vocab(vocab_file)
 
-    s3d = S3D(num_class=400)
-    model = S3DRecognizer(s3d, num_classes=len(vocab))
+    s3d = S3D(num_class=400)  # Base S3D model
+    model = S3DRecognizer(s3d, num_classes=len(vocab))  # Full recognizer wrapper
 
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
-    # Detect whether it's just a state_dict or a full checkpoint
-    state_dict = checkpoint if not isinstance(checkpoint, dict) or "model_state_dict" not in checkpoint else checkpoint["model_state_dict"]
+    # Detect bare state_dict or full checkpoint
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        print("Detected fine-tuned checkpoint (wrapped)")
+        state_dict = checkpoint["model_state_dict"]
+    else:
+        print("Detected bare state_dict (pretrained)")
+        state_dict = checkpoint
+
+    # Strip 'module.' prefix if present
+    if all(k.startswith("module.") for k in state_dict.keys()):
+        print("⚠️ Detected 'module.' prefix in keys. Stripping it.")
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
 
     # Remove classification head if shapes mismatch
     filtered_state_dict = {
@@ -130,7 +140,17 @@ def load_s3d_model(checkpoint_path):
         if not (k.startswith("fc.0.weight") or k.startswith("fc.0.bias"))
     }
 
-    s3d.load_state_dict(filtered_state_dict, strict=False)
+    # Try loading
+    missing, unexpected = s3d.load_state_dict(filtered_state_dict, strict=False)
+    print(f"ℹ️ Loaded weights. Missing: {missing}, Unexpected: {unexpected}")
+
+    # # Print stats for the first few parameters to verify weights loaded
+    # with torch.no_grad():
+    #     print("=== Sanity Check: Loaded S3D Weights ===")
+    #     for i, (name, param) in enumerate(s3d.named_parameters()):
+    #         print(f"{name}: mean={param.mean().item():.6f}, std={param.std().item():.6f}")
+    #         if i >= 3:  # only print first 4 layers
+    #             break
 
     model.to("cuda").eval()
     for _, p in s3d.named_parameters():
@@ -352,6 +372,15 @@ def main():
         model = load_i3d_model(CHECKPOINT_PATH, device)
     else:
         raise ValueError(f"Unsupported extractor: {EXTRACTOR}")
+
+    # # Dummy forward pass to verify activations
+    # dummy_input = torch.randn(1, 3, 16, 200, 200).to(device)  # [B, C, T, H, W]
+    # with torch.no_grad():
+    #     out = model(dummy_input)
+    #     print("=== Sanity Check: Dummy Forward Pass ===")
+    #     print(f"Output shape: {out.shape}")
+    #     print(
+    #         f"Output mean: {out.mean().item():.6f}, std: {out.std().item():.6f}, min: {out.min().item():.6f}, max: {out.max().item():.6f}")
 
     for split in SPLITS:
         feature_root, annotation_file = get_dataset_paths(DATASET, split)
