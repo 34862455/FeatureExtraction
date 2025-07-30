@@ -19,13 +19,17 @@ import gzip
 from tqdm import tqdm
 
 from model_s3d import S3D
+from model_p3d import P3D199
 from s3d_ctc_finetune import S3DRecognizer, build_vocab
 from PIL import Image, ImageDraw
 
 # ------------------------ Config ------------------------
-EXTRACTOR = "s3d" # Options: "s3d", "mediapipe", "i3d"
-DATASET = "phoenix"  # Options: "phoenix", "sasl", "how2sign"
-CHECKPOINT_PATH =  "checkpoints/S3D_kinetics400(1).pt" # Only for S3D & I3D "model_i3d/model_rgb.pth"
+DATA_PATH = "/home/minneke/Documents/Dataset"
+PHOENIX_PATH = "/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T"
+
+EXTRACTOR = "p3d" # Options: "s3d", "mediapipe", "i3d" "p3d"
+DATASET = "sasl"  # Options: "phoenix", "sasl", "how2sign"
+CHECKPOINT_PATH = None #"checkpoints/S3D_kinetics400.pt" # Only for S3D & I3D "model_i3d/model_rgb.pth"
 OUTPUT_NAME = "DSG_s3d_kinetics"  # Prefix for saved feature files
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -113,7 +117,7 @@ def load_s3d_model(checkpoint_path):
     from model_s3d import S3D
     from s3d_ctc_finetune import S3DRecognizer, build_vocab
 
-    vocab_file = "/home/minneke/Documents/Dataset/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T/annotations/manual/PHOENIX-2014-T.train.corpus.csv"
+    vocab_file = f"{DATA_PATH}/{PHOENIX_PATH}/annotations/manual/PHOENIX-2014-T.train.corpus.csv"
     vocab, _ = build_vocab(vocab_file)
 
     s3d = S3D(num_class=400)  # Base S3D model
@@ -172,15 +176,21 @@ def load_i3d_model(weights_path, device):
         param.requires_grad = False
     return model
 
+def load_p3d_model(device):
+    model = P3D199(pretrained=True, modality='RGB')  # Loads pretrained weights
+    model.to(device).eval()
+    for param in model.parameters():
+        param.requires_grad = False
+    return model
+
 def get_dataset_paths(dataset, split):
-    base_path = "/home/minneke/Documents/Dataset"
 
     if dataset == "phoenix":
-        feature_root = f"{base_path}/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T/features/fullFrame-210x260px/{split}"
-        annotation_file = f"{base_path}/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T/annotations/manual/PHOENIX-2014-T.{split}.corpus.csv"
+        feature_root = f"{DATA_PATH}/{PHOENIX_PATH}/features/fullFrame-210x260px/{split}"
+        annotation_file = f"{DATA_PATH}/{PHOENIX_PATH}/annotations/manual/PHOENIX-2014-T.{split}.corpus.csv"
     elif dataset == "sasl":
-        feature_root = f"{base_path}/SASL_Corpus_png_cropped/SASL Corpus png cropped"
-        with open(f"{base_path}/SASL_Corpus_png_cropped/final_no_duplicates_text_num.json", "r") as file:
+        feature_root = f"{DATA_PATH}/SASL_Corpus_png_cropped/SASL Corpus png cropped"
+        with open(f"{DATA_PATH}/SASL_Corpus_png_cropped/final_no_duplicates_text_num.json", "r") as file:
             annotations = json.load(file)
         cut_off = int(len(annotations) * 0.06)
         if split == "train":
@@ -190,8 +200,8 @@ def get_dataset_paths(dataset, split):
         elif split == "test":
             annotation_file = annotations[cut_off:2*cut_off]
     elif dataset == "how2sign":
-        feature_root = f"{base_path}/How2Sign/{split.capitalize()}/raw_videos"
-        annotation_file = f"{base_path}/How2Sign/{split.capitalize()}/how2sign_realigned_{split}.csv"
+        feature_root = f"{DATA_PATH}/How2Sign/{split.capitalize()}/raw_videos"
+        annotation_file = f"{DATA_PATH}/How2Sign/{split.capitalize()}/how2sign_realigned_{split}.csv"
         # print("Sample files in feature_root:")
         # print(sorted(os.listdir(feature_root))[:5])
     else:
@@ -310,6 +320,52 @@ def pickle_features_i3d(feature_root, dataset, output_name, split, model, device
         pickle.dump(data, f)
     print(f"Saved {len(data)} samples to {out_path}")
 
+def pickle_features_p3d(feature_root, dataset, output_name, split, model, device):
+    data = []
+    preprocess_frame = t.Compose([
+        t.Resize((224, 224)),
+        t.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    ])
+
+    for entry in tqdm(dataset, desc=f"Extracting {split} with P3D"):
+        files, name, signer, gloss, text = entry
+        frames = []
+        for frame_file in files:
+            frame_path = os.path.join(feature_root, name, frame_file)
+            try:
+                img = read_image(frame_path).float() / 255.0
+                img = preprocess_frame(img)
+                frames.append(img)
+            except Exception as e:
+                print(f"Error reading frame {frame_path}: {e}")
+        if len(frames) < 2:
+            continue
+
+        frames = torch.stack(frames, dim=0).permute(1, 0, 2, 3).unsqueeze(0).to(device)  # (1, C, T, H, W)
+
+        with torch.no_grad():
+            features = model.extract_features(frames)  # should be (T, 2048)
+            if features.dim() == 1:  # (2048,)
+                features = features.unsqueeze(0)  # make it (1, 2048)
+
+            # Debug: print shape of the first feature only
+            if len(data) == 0:
+                print(f"[DEBUG] Feature shape for sample '{name}': {features.shape}")
+
+        data.append({
+            "name": name,
+            "signer": signer,
+            "gloss": gloss,
+            "text": text,
+            "sign": features.cpu()
+        })
+
+    out_path = f"data/DSG_{output_name}_{split}.pt"
+    os.makedirs("data", exist_ok=True)
+    with gzip.open(out_path, "wb") as f:
+        pickle.dump(data, f)
+    print(f"Saved {len(data)} samples to {out_path}")
+
 def pickle_features_keypoints(feature_root, dataset, output_name, split):
     import gzip, pickle, torch
     from tqdm import tqdm
@@ -370,6 +426,8 @@ def main():
         model = None  # Not needed
     elif EXTRACTOR == "i3d":
         model = load_i3d_model(CHECKPOINT_PATH, device)
+    elif EXTRACTOR == "p3d":
+        model = load_p3d_model(device)
     else:
         raise ValueError(f"Unsupported extractor: {EXTRACTOR}")
 
@@ -392,6 +450,8 @@ def main():
             pickle_features_keypoints(feature_root, dataset, OUTPUT_NAME, split)
         elif EXTRACTOR == "i3d":
             pickle_features_i3d(feature_root, dataset, OUTPUT_NAME, split, model, device)
+        elif EXTRACTOR == "p3d":
+            pickle_features_p3d(feature_root, dataset, OUTPUT_NAME, split, model, device)
 
 
 if __name__ == "__main__":
