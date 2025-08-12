@@ -135,31 +135,31 @@ def load_s3d_model(checkpoint_path):
 
     # Strip 'module.' prefix if present
     if all(k.startswith("module.") for k in state_dict.keys()):
-        print("⚠️ Detected 'module.' prefix in keys. Stripping it.")
+        print("Detected 'module.' prefix in keys. Stripping it.")
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
 
-    # Remove classification head if shapes mismatch
-    filtered_state_dict = {
-        k: v for k, v in state_dict.items()
-        if not (k.startswith("fc.0.weight") or k.startswith("fc.0.bias"))
-    }
+    # # Remove classification head if shapes mismatch
+    # filtered_state_dict = {
+    #     k: v for k, v in state_dict.items()
+    #     if not (k.startswith("fc.0.weight") or k.startswith("fc.0.bias"))
+    # }
 
-    # Try loading
-    missing, unexpected = s3d.load_state_dict(filtered_state_dict, strict=False)
-    print(f"ℹ️ Loaded weights. Missing: {missing}, Unexpected: {unexpected}")
-
-    # # Print stats for the first few parameters to verify weights loaded
-    # with torch.no_grad():
-    #     print("=== Sanity Check: Loaded S3D Weights ===")
-    #     for i, (name, param) in enumerate(s3d.named_parameters()):
-    #         print(f"{name}: mean={param.mean().item():.6f}, std={param.std().item():.6f}")
-    #         if i >= 3:  # only print first 4 layers
-    #             break
+    # Load into the full wrapper
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    print(f"Loaded weights. Missing: {missing}, Unexpected: {unexpected}")
 
     model.to("cuda").eval()
     for _, p in s3d.named_parameters():
         p.requires_grad = False
-    return s3d
+
+    # Sanity check
+    with torch.no_grad():
+        first_weight = next(iter(model.s3d.state_dict().values()))
+        print("=== Sanity Check: Extractor Model Loaded ===")
+        print(
+            f"mean: {first_weight.mean().item():.6f}, std: {first_weight.std().item():.6f}, "
+            f"min: {first_weight.min().item():.6f}, max: {first_weight.max().item():.6f}"
+        )
 
 def load_i3d_model(weights_path, device):
     from src_i3d.i3dpt import I3D

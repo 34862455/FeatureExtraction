@@ -241,7 +241,10 @@ import pandas as pd
 from jiwer import wer
 from model_s3d import S3D
 
+SEED = 42
 
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
 # ------------------------ Config ------------------------
 DATA_PATH = "/home/minneke/Documents/Dataset"
 PHOENIX_PATH = "/Phoenix14T/PHOENIX-2014-T-release-v3/PHOENIX-2014-T"
@@ -399,20 +402,29 @@ if __name__ == "__main__":
 
     model = S3DRecognizer(s3d, num_classes=len(vocab)).to(device)
 
-    # if S3D_STRATEGY == "classifier":
-    #     for name, param in model.named_parameters():
-    #         param.requires_grad = 'classifier' in name
+    # ensures that S3DRecognizer wrapper does not unfreeze anything
+    if S3D_STRATEGY == "classifier":
+        for name, param in model.named_parameters():
+            param.requires_grad = 'classifier' in name
     # elif S3D_STRATEGY == "branch3":
     #     for name, param in model.named_parameters():
     #         if param.requires_grad:
     #             print("Unfrozen:", name)
 
     # Purely for debugging and verification
-    trainable_params = [name for name, p in model.named_parameters() if p.requires_grad]
-    print(f"Trainable parameters:\n{trainable_params}")
+    # trainable_params = [name for name, p in model.named_parameters() if p.requires_grad]
+    # print(f"Trainable parameters:\n{trainable_params}")
+
+    print("\n=== Sanity Check: Trainable Parameters ===")
+    for name, param in model.named_parameters():
+        print(f"{'Yes:' if param.requires_grad else 'No:'} {name}")
 
     # filter ensures that only parameters with requires_grad=True are passed to the optimizer by looping over all parameters
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-8)
+    for group in optimizer.param_groups:
+        for p in group['params']:
+            if not p.requires_grad:
+                print("Found frozen param in optimizer!", p.shape)
     criterion = nn.CTCLoss(blank=len(vocab), zero_infinity=True)
     #  part of automatic mixed precision (AMP)
     scaler = torch.amp.GradScaler() #scales loss to ensure it stays within range of float16. used to save memory and faster computation
@@ -434,6 +446,8 @@ if __name__ == "__main__":
     val_set = PhoenixS3DDataset(dev_root, dev_csv, vocab)
     train_loader = DataLoader(train_set, batch_size=4, shuffle=True, collate_fn=collate_fn)
     val_loader = DataLoader(val_set, batch_size=2, shuffle=False, collate_fn=collate_fn)
+
+    pre_train_weights = {k: v.clone() for k, v in model.s3d.state_dict().items()}
 
     # ------------------------ Track Metrics ------------------------
     train_losses = []
@@ -518,6 +532,11 @@ if __name__ == "__main__":
         print(f"Updated progress plot saved to {plot_path}")
 
         # ------------------------ Save Checkpoint ------------------------
+        print("\n=== Sanity Check: Backbone Weight Changes ===")
+        for name, param in model.s3d.state_dict().items():
+            if not torch.allclose(param, pre_train_weights[name], atol=1e-6):
+                print(f"Backbone parameter changed: {name}")
+
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
